@@ -1,4 +1,4 @@
-SUBDIRS =
+SUBDIRS = gen_server
 
 all_apps = $(SUBDIRS)
 
