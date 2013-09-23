@@ -40,7 +40,7 @@ module Server = struct
 	loop { s with state }
       | Response.Stop state -> begin
 	Pipe.close s.w;
-	loop { s with state }
+	s.callbacks.terminate state
       end
 
   let start init_arg callbacks r w =
