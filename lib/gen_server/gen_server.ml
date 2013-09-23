@@ -12,7 +12,7 @@ module Response = struct
 end
 
 module Server = struct
-  type 'a ret         = ('a Response.t, unit) Deferred.Result.t
+  type 'a ret         = 'a Response.t Deferred.t
   type ('a, 'b, 'c) t = { init        : ('c _t -> 'a -> 'b ret)
 			; handle_call : ('c _t -> 'b -> 'c -> 'b ret)
 			; terminate   : ('b -> unit Deferred.t)
@@ -32,27 +32,24 @@ module Server = struct
 	handle_call s msg
   and handle_call s msg =
     s.server.handle_call s.w s.state msg >>= function
-      | Ok (Response.Ok state) ->
+      | Response.Ok state ->
 	let s = { s with state } in
 	loop s
-      | Ok Response.Stop
-      | Error () -> begin
+      | Response.Stop -> begin
 	Pipe.close s.w;
 	loop s
       end
 
   let start init_arg server r w =
     server.init w init_arg >>= function
-      | Ok (Response.Ok state) -> begin
+      | Response.Ok state -> begin
 	let s = { server; state; r; w } in
 	ignore (loop s);
 	Deferred.return (Ok ())
       end
-      | Ok Response.Stop
-      | Error _ ->
+      | Response.Stop ->
 	Deferred.return (Error ())
-end
-
+end 
 let start init_arg server =
   let open Deferred.Result.Monad_infix in
   let (r, w) = Pipe.create () in
@@ -64,3 +61,6 @@ let stop t =
   Deferred.unit
 
 let send = Pipe.write
+
+let return v =
+  Deferred.return (Response.Ok v)
