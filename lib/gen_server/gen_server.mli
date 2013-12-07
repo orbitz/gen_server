@@ -15,9 +15,13 @@ end
  *)
 module Server : sig
   type 'a ret         = 'a Response.t Deferred.t
-  type ('a, 'b, 'c) t = { init        : ('c _t -> 'a -> 'b ret)
-			; handle_call : ('c _t -> 'b -> 'c -> 'b ret)
-			; terminate   : ('b -> unit Deferred.t)
+
+  (*
+   * i = initial args, s = server state, m = message type
+   *)
+  type ('i, 's, 'm) t = { init        : ('m _t -> 'i -> 's ret)
+			; handle_call : ('m _t -> 's -> 'm -> 's ret)
+			; terminate   : ('s -> unit Deferred.t)
 			}
 end
 
