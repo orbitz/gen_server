@@ -17,15 +17,15 @@ end
  *)
 module Server = struct
   type 'a ret         = 'a Response.t Deferred.t
-  type ('a, 'b, 'c) t = { init        : ('c _t -> 'a -> 'b ret)
-			; handle_call : ('c _t -> 'b -> 'c -> 'b ret)
-			; terminate   : ('b -> unit Deferred.t)
+  type ('i, 's, 'm) t = { init        : ('m _t -> 'i -> 's ret)
+			; handle_call : ('m _t -> 's -> 'm -> 's ret)
+			; terminate   : ('s -> unit Deferred.t)
 			}
 
-  type ('a, 'b, 'c) s = { callbacks : ('a, 'b, 'c) t
-			; state     : 'b
-			; r         : 'c Pipe.Reader.t
-			; w         : 'c Pipe.Writer.t
+  type ('i, 's, 'm) s = { callbacks : ('i, 's, 'm) t
+			; state     : 's
+			; r         : 'm Pipe.Reader.t
+			; w         : 'm Pipe.Writer.t
 			}
 
   let rec loop s =
