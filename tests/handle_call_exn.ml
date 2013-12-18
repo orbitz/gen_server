@@ -14,7 +14,7 @@ let handle_call _self state () =
 let terminate _reason state =
   Deferred.return ()
 
-let main () =
+let test () =
   let server =
     let module S = Gen_server.Server in
     { S.init        = init
@@ -22,15 +22,19 @@ let main () =
     ;   terminate   = terminate
     }
   in
-  Gen_server.start () server >>= function
-    | `Ok gs -> begin
-      Gen_server.send gs () >>= fun () ->
-      Gen_server.send gs () >>= fun () ->
-      Gen_server.stop gs    >>= fun () ->
-      Deferred.return (shutdown 0)
-    end
-    | `Error _ | `Exn _ ->
+  let open Deferred.Result in
+  Gen_server.start () server >>= fun gs ->
+  Gen_server.send gs ()      >>= fun _ ->
+  Gen_server.send gs ()      >>= fun _ ->
+  Gen_server.stop gs         >>= fun _ ->
+  Deferred.return (Ok ())
+
+let main () =
+  test () >>= function
+    | Ok () ->
       Deferred.return (shutdown 1)
+    | Error _ ->
+      Deferred.return (shutdown 0)
 
 let () =
   ignore (main ());

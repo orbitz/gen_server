@@ -5,7 +5,8 @@ type 'a t = 'a Pipe.Writer.t
 
 type 'a _t = 'a t
 
-type ('s, 'ie) init_ret = [ `Ok of 's | `Error of 'ie | `Exn of exn ]
+type 'ie init_ret = [ `Error of 'ie | `Exn of exn ]
+type send_ret     = [ `Closed ]
 
 module Response = struct
   type ('s, 'e) t =
@@ -89,12 +90,12 @@ module Server = struct
       | `Ok state -> begin
 	let s = { callbacks; state; r; w } in
 	ignore (loop s);
-	Deferred.return (`Ok w)
+	Deferred.return (Ok w)
       end
       | `Error err ->
-	Deferred.return (`Error err)
+	Deferred.return (Error (`Error err))
       | `Exn exn ->
-	Deferred.return (`Exn exn)
+	Deferred.return (Error (`Exn exn))
 end
 
 (*
@@ -106,10 +107,20 @@ let start init_arg callbacks =
   Server.start init_arg callbacks r w
 
 let stop t =
-  Pipe.close t;
-  Deferred.unit
+  if not (Pipe.is_closed t) then begin
+    Pipe.close t;
+    Deferred.return (Ok ())
+  end
+  else
+    Deferred.return (Error `Closed)
 
-let send = Pipe.write
+let send t m =
+  if not (Pipe.is_closed t) then begin
+    Pipe.write t m >>= fun () ->
+    Deferred.return (Ok m)
+  end
+  else
+    Deferred.return (Error `Closed)
 
 (*
  * We provide a functor for those who are in to that kind of thing

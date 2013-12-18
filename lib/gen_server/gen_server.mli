@@ -2,7 +2,8 @@ open Async.Std
 
 type 'a t
 
-type ('s, 'ie) init_ret = [ `Ok of 's | `Error of 'ie | `Exn of exn ]
+type 'ie init_ret = [ `Error of 'ie | `Exn of exn ]
+type send_ret     = [ `Closed ]
 
 module Response : sig
   type ('s, 'e) t =
@@ -50,16 +51,16 @@ end
 module Make : functor (Gs : GEN_SERVER) -> sig
   type t
 
-  val start  : Gs.init_arg -> [> (t, Gs.init_err) init_ret ] Deferred.t
-  val stop   : t -> unit Deferred.t
+  val start  : Gs.init_arg -> (t, [> Gs.init_err init_ret ]) Deferred.Result.t
+  val stop   : t -> (unit, [> `Closed ]) Deferred.Result.t
 
-  val send   : t -> Gs.msg -> unit Deferred.t
+  val send   : t -> Gs.msg -> (Gs.msg, [> send_ret ]) Deferred.Result.t
 end
 
 (*
  * Polymorphic API
  *)
-val start  : 'i -> ('i, 's, 'm, 'ie, 'he) Server.t -> [> ('m t, 'ie) init_ret ] Deferred.t
-val stop   : 'm t -> unit Deferred.t
+val start  : 'i -> ('i, 's, 'm, 'ie, 'he) Server.t -> ('m t, [> 'ie init_ret ]) Deferred.Result.t
+val stop   : 'm t ->  (unit, [> `Closed ]) Deferred.Result.t
 
-val send   : 'm t -> 'm -> unit Deferred.t
+val send   : 'm t -> 'm -> ('m, [> send_ret ]) Deferred.Result.t

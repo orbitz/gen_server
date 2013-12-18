@@ -21,7 +21,20 @@ let handle_call _self state = function
 let terminate _reason state =
   Deferred.return ()
 
-let main () =
+let inc gs i =
+  Gen_server.send gs (Msg.Inc i)
+
+let get gs =
+  let ivar = Ivar.create () in
+  Gen_server.send gs (Msg.Get ivar) >>= function
+    | Ok _ -> begin
+      Ivar.read ivar >>= fun v ->
+      Deferred.return (Ok v)
+    end
+    | Error err ->
+      Deferred.return (Error err)
+
+let start init_val =
   let server =
     let module S = Gen_server.Server in
     { S.init        = init
@@ -29,17 +42,23 @@ let main () =
     ;   terminate   = terminate
     }
   in
-  Gen_server.start 0 server >>= function
-    | `Ok gs -> begin
-      Gen_server.send gs (Msg.Inc 1) >>= fun () ->
-      let i = Ivar.create () in
-      Gen_server.send gs (Msg.Get i) >>= fun () ->
-      Gen_server.stop gs             >>= fun () ->
-      Ivar.read i                    >>= fun num ->
-      assert (num = 1);
+  Gen_server.start init_val server
+
+let do_stuff () =
+  let open Deferred.Result in
+  start 0            >>= fun gs ->
+  inc gs 1           >>= fun _ ->
+  get gs             >>= fun v ->
+  Gen_server.stop gs >>= fun _ ->
+  Deferred.return (Ok v)
+
+let main () =
+  do_stuff () >>= function
+    | Ok v -> begin
+      assert (v = 1);
       Deferred.return (shutdown 0)
     end
-    | `Error _ | `Exn _ ->
+    | Error (`Error _) | Error (`Exn _) | Error `Closed ->
       Deferred.return (shutdown 1)
 
 let () =
