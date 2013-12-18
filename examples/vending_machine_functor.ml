@@ -43,11 +43,11 @@ end
 module Vending_machine : sig
   type t
 
-  val start     : Food.t -> (t, unit) Deferred.Result.t
-  val stop      : t -> unit Deferred.t
-  val pick      : t -> string -> Msg.pick_ret Deferred.t
-  val add_money : t -> int -> unit Deferred.t
-  val cancel    : t -> unit Deferred.t
+  val start     : Food.t -> (t, [> unit Gen_server.init_ret ]) Deferred.Result.t
+  val stop      : t -> (unit, [> `Closed ]) Deferred.Result.t
+  val pick      : t -> string -> (Msg.pick_ret, [> Gen_server.send_ret ]) Deferred.Result.t
+  val add_money : t -> int -> (Msg.t, [> `Closed ]) Deferred.Result.t
+  val cancel    : t -> (Msg.t, [> `Closed ]) Deferred.Result.t
 end = struct
   module Server = Gen_server.Make(struct
     type state    = { current_money : int
@@ -55,39 +55,41 @@ end = struct
 		    }
     type msg      = Msg.t
     type init_arg = Food.t
+    type init_err = unit
+    type err      = unit
 
     (* Callbacks *)
-    let init self food =
+    let init _self food =
       print_endline "Starting Vending Machine";
       let state = { current_money = 0; food } in
-      Gen_server.return state
+      Deferred.return (Ok state)
 
-    let handle_call self state = function
+    let handle_call _self state = function
       | Msg.Pick (id, reply) -> begin
 	match Food.pick id state.current_money state.food with
 	  | Ok food -> begin
 	    Ivar.fill reply Msg.Ok;
-	    Gen_server.return { current_money = 0; food }
+	    Deferred.return (`Ok { current_money = 0; food })
 	  end
 	  | Error `Out_of_stock -> begin
 	    Ivar.fill reply Msg.Out_of_stock;
-	    Gen_server.return state
+	    Deferred.return (`Ok state)
 	  end
 	  | Error `Bad_id -> begin
 	    Ivar.fill reply Msg.Bad_id;
-	    Gen_server.return state
+	    Deferred.return (`Ok state)
 	  end
 	  | Error `Not_enough_money -> begin
 	    Ivar.fill reply Msg.Not_enough_money;
-	    Gen_server.return state
+	    Deferred.return (`Ok state)
 	end
       end
       | Msg.Cancel ->
-	Gen_server.return { state with current_money = 0 }
+	Deferred.return (`Ok { state with current_money = 0 })
       | Msg.Add_money amount ->
-	Gen_server.return { state with current_money = state.current_money + amount }
+	Deferred.return (`Ok { state with current_money = state.current_money + amount })
 
-    let terminate state =
+    let terminate _reason state =
       print_endline "Shutting down Vending Machine";
       Deferred.unit
   end)
@@ -99,9 +101,10 @@ end = struct
 
   (* Actual API level *)
   let pick s id =
+    let open Deferred.Result in
     let ret = Ivar.create () in
-    Server.send s (Msg.Pick (id, ret)) >>= fun () ->
-    Ivar.read ret
+    Server.send s (Msg.Pick (id, ret)) >>= fun _ ->
+    Deferred.(Ivar.read ret >>= Result.return)
 
   let cancel s =
     Server.send s Msg.Cancel
@@ -125,30 +128,39 @@ let food = [ { Food.id       = "cheetos"
 	   ]
 
 let try_pick gs id =
-  Vending_machine.pick gs id >>| function
-    | Msg.Ok               -> printf "Yummy %s!\n%!" id
-    | Msg.Not_enough_money -> print_endline "You need to add more money"
-    | Msg.Out_of_stock     -> printf "There are not enough %s in stock\n%!" id
-    | Msg.Bad_id           -> printf "I have no idea what %s is\n%!" id
+  let print = function
+      | Msg.Ok               -> printf "Yummy %s!\n%!" id
+      | Msg.Not_enough_money -> print_endline "You need to add more money"
+      | Msg.Out_of_stock     -> printf "There are not enough %s in stock\n%!" id
+      | Msg.Bad_id           -> printf "I have no idea what %s is\n%!" id
+  in
+  let open Deferred.Result in
+  Vending_machine.pick gs id >>= fun msg ->
+  print msg;
+  Deferred.return (Ok ())
 
+
+let vending_machine () =
+  let open Deferred.Result in
+  Vending_machine.start food      >>= fun gs ->
+  try_pick gs "something"         >>= fun _ ->
+  try_pick gs "cheetos"           >>= fun _ ->
+  Vending_machine.add_money gs 75 >>= fun _ ->
+  try_pick gs "cheetos"           >>= fun _ ->
+  Vending_machine.add_money gs 25 >>= fun _ ->
+  Vending_machine.add_money gs 25 >>= fun _ ->
+  try_pick gs "granola"           >>= fun _ ->
+  Vending_machine.add_money gs 75 >>= fun _ ->
+  Vending_machine.cancel gs       >>= fun _ ->
+  try_pick gs "doritos"           >>= fun _ ->
+  Vending_machine.stop gs         >>= fun _ ->
+  Deferred.return (Ok ())
 
 let main () =
-  Vending_machine.start food >>= function
-    | Ok gs -> begin
-      try_pick gs "something"         >>= fun () ->
-      try_pick gs "cheetos"           >>= fun () ->
-      Vending_machine.add_money gs 75 >>= fun () ->
-      try_pick gs "cheetos"           >>= fun () ->
-      Vending_machine.add_money gs 25 >>= fun () ->
-      Vending_machine.add_money gs 25 >>= fun () ->
-      try_pick gs "granola"           >>= fun () ->
-      Vending_machine.add_money gs 75 >>= fun () ->
-      Vending_machine.cancel gs       >>= fun () ->
-      try_pick gs "doritos"           >>= fun () ->
-      Vending_machine.stop gs         >>= fun () ->
+  vending_machine () >>= function
+    | Ok () ->
       Deferred.return (shutdown 0)
-    end
-    | Error () -> begin
+    | Error _ -> begin
       printf "Failed for unknown reason\n";
       Deferred.return (shutdown 1)
     end

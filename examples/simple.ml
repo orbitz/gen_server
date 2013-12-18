@@ -8,24 +8,24 @@ module Msg = struct
 end
 
 module Simple_server : sig
-  val start : unit -> (Msg.t Gen_server.t, unit) Deferred.Result.t
-  val stop  : Msg.t Gen_server.t -> unit Deferred.t
-  val print : Msg.t Gen_server.t -> string -> unit Deferred.t
-  val sync  : Msg.t Gen_server.t -> unit Deferred.t
+  val start : unit -> (Msg.t Gen_server.t, [> unit Gen_server.init_ret ]) Deferred.Result.t
+  val stop  : Msg.t Gen_server.t -> (unit, [> `Closed ]) Deferred.Result.t
+  val print : Msg.t Gen_server.t -> string -> (Msg.t, [> `Closed ]) Deferred.Result.t
+  val sync  : Msg.t Gen_server.t -> (Msg.t, [> `Closed ]) Deferred.Result.t
 end = struct
   (* Callbacks *)
-  let init self init_arg =
-    Deferred.return (Gen_server.Response.Ok ())
+  let init _self () =
+    Deferred.return (Ok ())
 
-  let handle_call self () = function
+  let handle_call _self () = function
     | Msg.Print s -> begin
       print_endline s;
-      Deferred.return (Gen_server.Response.Ok ())
+      Deferred.return (`Ok ())
     end
     | Msg.Sync ->
-      Deferred.return (Gen_server.Response.Ok ())
+      Deferred.return (`Ok ())
 
-  let terminate () =
+  let terminate _reason () =
     print_endline "Shutting down";
     Deferred.unit
 
@@ -47,15 +47,19 @@ end = struct
     Gen_server.send s Msg.Sync
 end
 
+let simple () =
+  let open Deferred.Result in
+  Simple_server.start ()           >>= fun gs ->
+  Simple_server.print gs "foo bar" >>= fun _ ->
+  Simple_server.sync gs            >>= fun _ ->
+  Simple_server.stop gs            >>= fun () ->
+  Deferred.return (Ok ())
+
 let main () =
-  Simple_server.start () >>= function
-    | Ok gs -> begin
-      Simple_server.print gs "foo bar" >>= fun () ->
-      Simple_server.sync gs            >>= fun () ->
-      Simple_server.stop gs            >>= fun () ->
+  simple () >>= function
+    | Ok () ->
       Deferred.return (shutdown 0)
-    end
-    | Error () -> begin
+    | Error _ -> begin
       printf "Failed for unknown reason";
       Deferred.return (shutdown 1)
     end
