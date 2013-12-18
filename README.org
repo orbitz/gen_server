@@ -1,0 +1,3 @@
+* About
+An Ocaml/Async attempt at an Erlang-style gen_server.
+
