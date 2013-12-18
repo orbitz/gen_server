@@ -23,14 +23,11 @@ let main () =
     }
   in
   Gen_server.start () server >>= function
-    | `Ok gs -> begin
-      Gen_server.send gs () >>= fun () ->
-      Gen_server.send gs () >>= fun () ->
-      Gen_server.stop gs    >>= fun () ->
-      Deferred.return (shutdown 0)
-    end
-    | `Error _ | `Exn _ ->
+    | Ok _ -> begin
       Deferred.return (shutdown 1)
+    end
+    | Error (`Error _) | Error (`Exn _) ->
+      Deferred.return (shutdown 0)
 
 let () =
   ignore (main ());
