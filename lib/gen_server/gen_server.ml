@@ -5,10 +5,14 @@ type 'a t = 'a Pipe.Writer.t
 
 type 'a _t = 'a t
 
+type ('s, 'ie) init_ret = [ `Ok of 's | `Error of 'ie | `Exn of exn ]
+
 module Response = struct
-  type 'a t =
-    | Stop of 'a
-    | Ok   of 'a
+  type ('s, 'e) t =
+    [ `Stop  of 's
+    | `Ok    of 's
+    | `Error of 'e
+    ]
 end
 
 (*
@@ -16,42 +20,81 @@ end
  * calling the appropriate callback
  *)
 module Server = struct
-  type 'a ret         = 'a Response.t Deferred.t
-  type ('i, 's, 'm) t = { init        : ('m _t -> 'i -> 's ret)
-			; handle_call : ('m _t -> 's -> 'm -> 's ret)
-			; terminate   : ('s -> unit Deferred.t)
-			}
+  type ('s, 'e) ret              = ('s, 'e) Response.t Deferred.t
 
-  type ('i, 's, 'm) s = { callbacks : ('i, 's, 'm) t
-			; state     : 's
-			; r         : 'm Pipe.Reader.t
-			; w         : 'm Pipe.Writer.t
-			}
+  type 'he error                 = [ `Normal | `Exn of exn | `Error of 'he ]
+  type ('m, 'i, 's, 'ie) init    = 'm _t -> 'i -> ('s, 'ie) Deferred.Result.t
+  type ('m, 's, 'he) handle_call = 'm _t -> 's -> 'm -> ('s, 'he) ret
+  type ('he, 's) terminate       = 'he error -> 's -> unit Deferred.t
+  type ('i, 's, 'm, 'ie, 'he) t  = { init        : ('m, 'i, 's, 'ie) init
+				   ; handle_call : ('m, 's, 'he) handle_call
+				   ; terminate   : ('he, 's) terminate
+				   }
+
+  type ('i, 's, 'm, 'ie, 'he) s  = { callbacks : ('i, 's, 'm, 'ie, 'he) t
+				   ; state     : 's
+				   ; r         : 'm Pipe.Reader.t
+				   ; w         : 'm Pipe.Writer.t
+				   }
+
+  let safe_init init w init_arg =
+    Monitor.try_with
+      (fun () -> init w init_arg)
+    >>= function
+      | Ok (Ok anything) ->
+	Deferred.return (`Ok anything)
+      | Ok (Error anything) ->
+	Deferred.return (`Error anything)
+      | Error exn ->
+	Deferred.return (`Exn exn)
+
+  let safe_call handle_call w s msg =
+    Monitor.try_with
+      (fun () -> handle_call w s msg)
+    >>= function
+      | Ok (`Ok anything) ->
+	Deferred.return (`Ok anything)
+      | Ok (`Error anything) ->
+	Deferred.return (`Error anything)
+      | Ok (`Stop anything) ->
+	Deferred.return (`Stop anything)
+      | Error exn ->
+	Deferred.return (`Exn exn)
 
   let rec loop s =
     Pipe.read s.r >>= function
       | `Eof ->
-	s.callbacks.terminate s.state
+	s.callbacks.terminate `Normal s.state
       | `Ok msg ->
 	handle_call s msg
   and handle_call s msg =
-    s.callbacks.handle_call s.w s.state msg >>= function
-      | Response.Ok state ->
+    safe_call s.callbacks.handle_call s.w s.state msg >>= function
+      | `Ok state ->
 	loop { s with state }
-      | Response.Stop state -> begin
+      | `Error err -> begin
 	Pipe.close s.w;
-	s.callbacks.terminate state
+	s.callbacks.terminate (`Error err) s.state
+      end
+      | `Exn exn -> begin
+	Pipe.close s.w;
+	s.callbacks.terminate (`Exn exn) s.state
+      end
+      | `Stop state -> begin
+	Pipe.close s.w;
+	s.callbacks.terminate `Normal state
       end
 
   let start init_arg callbacks r w =
-    callbacks.init w init_arg >>= function
-      | Response.Ok state -> begin
+    safe_init callbacks.init w init_arg >>= function
+      | `Ok state -> begin
 	let s = { callbacks; state; r; w } in
 	ignore (loop s);
-	Deferred.return (Ok ())
+	Deferred.return (`Ok w)
       end
-      | Response.Stop _ ->
-	Deferred.return (Error ())
+      | `Error err ->
+	Deferred.return (`Error err)
+      | `Exn exn ->
+	Deferred.return (`Exn exn)
 end
 
 (*
@@ -59,22 +102,14 @@ end
  * This is the base from which everything else can be constructed
  *)
 let start init_arg callbacks =
-  let open Deferred.Result.Monad_infix in
   let (r, w) = Pipe.create () in
-  Server.start init_arg callbacks r w >>= fun () ->
-  Deferred.return (Ok w)
+  Server.start init_arg callbacks r w
 
 let stop t =
   Pipe.close t;
   Deferred.unit
 
 let send = Pipe.write
-
-let return state =
-  Deferred.return (Response.Ok state)
-
-let fail state =
-  Deferred.return (Response.Stop state)
 
 (*
  * We provide a functor for those who are in to that kind of thing
@@ -83,10 +118,12 @@ module type GEN_SERVER = sig
   type state
   type msg
   type init_arg
+  type init_err
+  type err
 
-  val init        : msg _t -> init_arg -> state Server.ret
-  val handle_call : msg _t -> state -> msg -> state Server.ret
-  val terminate   : state -> unit Deferred.t
+  val init        : (msg, init_arg, state, init_err) Server.init
+  val handle_call : (msg, state, err) Server.handle_call
+  val terminate   : (err, state) Server.terminate
 end
 
 (*

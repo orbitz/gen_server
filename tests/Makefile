@@ -1,27 +1,14 @@
 CAMLP4=
-OCAMLC_OPTS=-package gen_server
+OCAMLC_OPTS=-package core,async,gen_server
 OCAMLOPT_OPTS=$(OCAMLC_OPTS)
 
-NON_LIB_MODULES=
+TEST_MODULES=success.ml init_exn.ml handle_call_exn.ml
 
-native_bin=$(NON_LIB_MODULES:%.ml=%.native)
+TEST_DEPS=../lib/gen_server/gen_server.cmxa ../lib/gen_server/gen_server.cma
 
-byte_bin=$(NON_LIB_MODULES:%.ml=%.byte)
+.PHONY: all test
 
-.PHONY: all native-code byte-code test clean
-
-all: native-code byte-code
-
-native-code: $(native_bin)
-
-byte-code: $(byte_bin)
-
-test: all
-
-clean: extra_clean
-
-extra_clean:
-	-rm -f *.native *.byte *.cmx *.cmo *.o *.cmi
+all: test
 
 # Dependencies
 include ../lib/Ocamlrules.mk.in

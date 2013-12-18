@@ -2,27 +2,34 @@ open Async.Std
 
 type 'a t
 
-type 'a _t = 'a t
+type ('s, 'ie) init_ret = [ `Ok of 's | `Error of 'ie | `Exn of exn ]
 
 module Response : sig
-  type 'a t =
-    | Stop of 'a
-    | Ok   of 'a
+  type ('s, 'e) t =
+    [ `Stop  of 's
+    | `Ok    of 's
+    | `Error of 'e
+    ]
 end
 
 (*
  * Defines the callbacks a server must implement
  *)
 module Server : sig
-  type 'a ret         = 'a Response.t Deferred.t
+  type ('s, 'e) ret              = ('s, 'e) Response.t Deferred.t
 
   (*
    * i = initial args, s = server state, m = message type
+   * ie = initialization error, he = handle call errors
    *)
-  type ('i, 's, 'm) t = { init        : ('m _t -> 'i -> 's ret)
-			; handle_call : ('m _t -> 's -> 'm -> 's ret)
-			; terminate   : ('s -> unit Deferred.t)
-			}
+  type 'he error                 = [ `Normal | `Exn of exn | `Error of 'he ]
+  type ('m, 'i, 's, 'ie) init    = 'm t -> 'i -> ('s, 'ie) Deferred.Result.t
+  type ('m, 's, 'he) handle_call = 'm t -> 's -> 'm -> ('s, 'he) ret
+  type ('he, 's) terminate       = 'he error -> 's -> unit Deferred.t
+  type ('i, 's, 'm, 'ie, 'he) t  = { init        : ('m, 'i, 's, 'ie) init
+				   ; handle_call : ('m, 's, 'he) handle_call
+				   ; terminate   : ('he, 's) terminate
+				   }
 end
 
 (*
@@ -32,16 +39,18 @@ module type GEN_SERVER = sig
   type state
   type msg
   type init_arg
+  type init_err
+  type err
 
-  val init        : msg _t -> init_arg -> state Server.ret
-  val handle_call : msg _t -> state -> msg -> state Server.ret
-  val terminate   : state -> unit Deferred.t
+  val init        : (msg, init_arg, state, init_err) Server.init
+  val handle_call : (msg, state, err) Server.handle_call
+  val terminate   : (err, state) Server.terminate
 end
 
 module Make : functor (Gs : GEN_SERVER) -> sig
   type t
 
-  val start  : Gs.init_arg -> (t, unit) Deferred.Result.t
+  val start  : Gs.init_arg -> [> (t, Gs.init_err) init_ret ] Deferred.t
   val stop   : t -> unit Deferred.t
 
   val send   : t -> Gs.msg -> unit Deferred.t
@@ -50,10 +59,7 @@ end
 (*
  * Polymorphic API
  *)
-val start  : 'a -> ('a, 'b, 'c) Server.t -> ('c t, unit) Deferred.Result.t
-val stop   : 'a t -> unit Deferred.t
+val start  : 'i -> ('i, 's, 'm, 'ie, 'he) Server.t -> [> ('m t, 'ie) init_ret ] Deferred.t
+val stop   : 'm t -> unit Deferred.t
 
-val send   : 'a t -> 'a -> unit Deferred.t
-
-val return : 'a -> 'a Response.t Deferred.t
-val fail   : 'a -> 'a Response.t Deferred.t
+val send   : 'm t -> 'm -> unit Deferred.t

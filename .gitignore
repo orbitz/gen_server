@@ -7,5 +7,7 @@
 *.cmx
 *.o
 *.native
+*.native_test
 *.byte
+*.byte_test
 .d
