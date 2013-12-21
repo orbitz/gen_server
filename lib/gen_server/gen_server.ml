@@ -12,7 +12,7 @@ module Response = struct
   type ('s, 'e) t =
     | Stop  of 's
     | Ok    of 's
-    | Error of 'e
+    | Error of ('e * 's)
 end
 
 (*
@@ -80,9 +80,9 @@ module Server = struct
     safe_call s.callbacks.handle_call s.w s.state msg >>= function
       | `Ok state ->
 	loop { s with state }
-      | `Error err -> begin
+      | `Error (err, state) -> begin
 	Pipe.close s.w;
-	safe_terminate s.callbacks.terminate (Error err) s.state
+	safe_terminate s.callbacks.terminate (Error err) state
       end
       | `Exn exn -> begin
 	Pipe.close s.w;

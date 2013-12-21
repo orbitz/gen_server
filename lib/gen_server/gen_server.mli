@@ -9,7 +9,7 @@ module Response : sig
   type ('s, 'e) t =
     | Stop  of 's
     | Ok    of 's
-    | Error of 'e
+    | Error of ('e * 's)
 end
 
 (*
