@@ -1,6 +1,8 @@
 open Core.Std
 open Async.Std
 
+module Resp = Gen_server.Response
+
 module Msg = struct
   type t =
     | Print of string
@@ -20,10 +22,10 @@ end = struct
   let handle_call _self () = function
     | Msg.Print s -> begin
       print_endline s;
-      Deferred.return (`Ok ())
+      Deferred.return (Resp.Ok ())
     end
     | Msg.Sync ->
-      Deferred.return (`Ok ())
+      Deferred.return (Resp.Ok ())
 
   let terminate _reason () =
     print_endline "Shutting down";

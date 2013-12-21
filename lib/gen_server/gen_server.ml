@@ -10,10 +10,9 @@ type send_ret     = [ `Closed ]
 
 module Response = struct
   type ('s, 'e) t =
-    [ `Stop  of 's
-    | `Ok    of 's
-    | `Error of 'e
-    ]
+    | Stop  of 's
+    | Ok    of 's
+    | Error of 'e
 end
 
 (*
@@ -23,7 +22,7 @@ end
 module Server = struct
   type ('s, 'e) ret              = ('s, 'e) Response.t Deferred.t
 
-  type 'he error                 = [ `Normal | `Exn of exn | `Error of 'he ]
+  type 'he error                 = Normal | Exn of exn | Error of 'he
   type ('m, 'i, 's, 'ie) init    = 'm _t -> 'i -> ('s, 'ie) Deferred.Result.t
   type ('m, 's, 'he) handle_call = 'm _t -> 's -> 'm -> ('s, 'he) ret
   type ('he, 's) terminate       = 'he error -> 's -> unit Deferred.t
@@ -42,24 +41,24 @@ module Server = struct
     Monitor.try_with
       (fun () -> init w init_arg)
     >>= function
-      | Ok (Ok anything) ->
+      | Result.Ok (Result.Ok anything) ->
 	Deferred.return (`Ok anything)
-      | Ok (Error anything) ->
+      | Result.Ok (Result.Error anything) ->
 	Deferred.return (`Error anything)
-      | Error exn ->
+      | Result.Error exn ->
 	Deferred.return (`Exn exn)
 
   let safe_call handle_call w s msg =
     Monitor.try_with
       (fun () -> handle_call w s msg)
     >>= function
-      | Ok (`Ok anything) ->
+      | Result.Ok (Response.Ok anything) ->
 	Deferred.return (`Ok anything)
-      | Ok (`Error anything) ->
+      | Result.Ok (Response.Error anything) ->
 	Deferred.return (`Error anything)
-      | Ok (`Stop anything) ->
+      | Result.Ok (Response.Stop anything) ->
 	Deferred.return (`Stop anything)
-      | Error exn ->
+      | Result.Error exn ->
 	Deferred.return (`Exn exn)
 
   (* Termination errors are just consumed *)
@@ -67,14 +66,14 @@ module Server = struct
     Monitor.try_with
       (fun () -> terminate reason state)
     >>= function
-      | Ok ()   -> Deferred.return ()
-      | Error _ -> Deferred.return ()
+      | Result.Ok ()   -> Deferred.return ()
+      | Result.Error _ -> Deferred.return ()
 
 
   let rec loop s =
     Pipe.read s.r >>= function
       | `Eof ->
-	safe_terminate s.callbacks.terminate `Normal s.state
+	safe_terminate s.callbacks.terminate Normal s.state
       | `Ok msg ->
 	handle_call s msg
   and handle_call s msg =
@@ -83,15 +82,15 @@ module Server = struct
 	loop { s with state }
       | `Error err -> begin
 	Pipe.close s.w;
-	safe_terminate s.callbacks.terminate (`Error err) s.state
+	safe_terminate s.callbacks.terminate (Error err) s.state
       end
       | `Exn exn -> begin
 	Pipe.close s.w;
-	safe_terminate s.callbacks.terminate (`Exn exn) s.state
+	safe_terminate s.callbacks.terminate (Exn exn) s.state
       end
       | `Stop state -> begin
 	Pipe.close s.w;
-	safe_terminate s.callbacks.terminate `Normal state
+	safe_terminate s.callbacks.terminate Normal state
       end
 
   let start init_arg callbacks r w =
@@ -99,12 +98,12 @@ module Server = struct
       | `Ok state -> begin
 	let s = { callbacks; state; r; w } in
 	ignore (loop s);
-	Deferred.return (Ok w)
+	Deferred.return (Result.Ok w)
       end
       | `Error err ->
-	Deferred.return (Error (`Error err))
+	Deferred.return (Result.Error (`Error err))
       | `Exn exn ->
-	Deferred.return (Error (`Exn exn))
+	Deferred.return (Result.Error (`Exn exn))
 end
 
 (*

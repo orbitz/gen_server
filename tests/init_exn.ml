@@ -1,6 +1,8 @@
 open Core.Std
 open Async.Std
 
+module Resp = Gen_server.Response
+
 module Msg = struct
   type t = unit
 end
@@ -9,7 +11,7 @@ let init _self init =
   failwith "blaaaaaaaaargh"
 
 let handle_call _self state () =
-  Deferred.return (`Ok ())
+  Deferred.return (Resp.Ok ())
 
 let terminate _reason state =
   Deferred.return ()
