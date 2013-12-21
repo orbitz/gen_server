@@ -1,6 +1,8 @@
 open Core.Std
 open Async.Std
 
+module Resp = Gen_server.Response
+
 module Msg = struct
   type pick_ret =
     | Ok
@@ -62,25 +64,25 @@ end = struct
       match Food.pick id state.current_money state.food with
 	| Ok food -> begin
 	  Ivar.fill reply Msg.Ok;
-	  Deferred.return (`Ok { current_money = 0; food })
+	  Deferred.return (Resp.Ok { current_money = 0; food })
 	end
 	| Error `Out_of_stock -> begin
 	  Ivar.fill reply Msg.Out_of_stock;
-	  Deferred.return (`Ok state)
+	  Deferred.return (Resp.Ok state)
 	end
 	| Error `Bad_id -> begin
 	  Ivar.fill reply Msg.Bad_id;
-	  Deferred.return (`Ok state)
+	  Deferred.return (Resp.Ok state)
 	end
 	| Error `Not_enough_money -> begin
 	  Ivar.fill reply Msg.Not_enough_money;
-	  Deferred.return (`Ok state)
+	  Deferred.return (Resp.Ok state)
 	end
     end
     | Msg.Cancel ->
-      Deferred.return (`Ok { state with current_money = 0 })
+      Deferred.return (Resp.Ok { state with current_money = 0 })
     | Msg.Add_money amount ->
-      Deferred.return (`Ok { state with current_money = state.current_money + amount })
+      Deferred.return (Resp.Ok { state with current_money = state.current_money + amount })
 
   let terminate _reason state =
     print_endline "Shutting down Vending Machine";

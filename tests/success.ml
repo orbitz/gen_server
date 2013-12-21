@@ -1,6 +1,8 @@
 open Core.Std
 open Async.Std
 
+module Resp = Gen_server.Response
+
 module Msg = struct
   type t =
     | Inc of int
@@ -12,10 +14,10 @@ let init _self init =
 
 let handle_call _self state = function
   | Msg.Inc i ->
-    Deferred.return (`Ok (state + i))
+    Deferred.return (Resp.Ok (state + i))
   | Msg.Get i -> begin
     Ivar.fill i state;
-    Deferred.return (`Ok state)
+    Deferred.return (Resp.Ok state)
   end
 
 let terminate _reason state =

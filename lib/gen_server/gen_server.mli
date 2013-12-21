@@ -7,10 +7,9 @@ type send_ret     = [ `Closed ]
 
 module Response : sig
   type ('s, 'e) t =
-    [ `Stop  of 's
-    | `Ok    of 's
-    | `Error of 'e
-    ]
+    | Stop  of 's
+    | Ok    of 's
+    | Error of 'e
 end
 
 (*
@@ -23,7 +22,7 @@ module Server : sig
    * i = initial args, s = server state, m = message type
    * ie = initialization error, he = handle call errors
    *)
-  type 'he error                 = [ `Normal | `Exn of exn | `Error of 'he ]
+  type 'he error                 = Normal | Exn of exn | Error of 'he
   type ('m, 'i, 's, 'ie) init    = 'm t -> 'i -> ('s, 'ie) Deferred.Result.t
   type ('m, 's, 'he) handle_call = 'm t -> 's -> 'm -> ('s, 'he) ret
   type ('he, 's) terminate       = 'he error -> 's -> unit Deferred.t
