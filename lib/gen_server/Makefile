@@ -15,7 +15,7 @@ NATIVE_TARGETS=gen_server.cmxa
 all: native-code byte-code
 
 install: all
-	ocamlfind install gen_server META gen_server.cmxa gen_server.cma *.cmx *.cmi *.mli
+	ocamlfind install gen_server META gen_server.cmxa gen_server.cma gen_server.a *.cmx *.cmi *.mli
 
 test:
 
