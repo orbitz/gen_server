@@ -32,12 +32,12 @@ end = struct
     Deferred.unit
 
   (* Package the callbacks *)
-  let create =
+  let callbacks =
     { Gen_server.Server.init; handle_call; terminate }
 
   (* Actual API level *)
   let start () =
-    Gen_server.start () create
+    Gen_server.start () callbacks
 
   let stop s =
     Gen_server.stop s
