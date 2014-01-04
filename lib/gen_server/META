@@ -1,6 +1,6 @@
 name="gen_server"
 version="1.0.0"
 description="An Erlang-like gen_server implementation"
-requires="core,async,async_core"
+requires="core,async"
 archive(byte)="gen_server.cma"
 archive(native)="gen_server.cmxa"
