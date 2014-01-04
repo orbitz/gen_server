@@ -1,6 +1,6 @@
 CAMLP4=
 
-OCAMLDEP_OPTS=-package core,async,async_core
+OCAMLDEP_OPTS=-package core,async
 OCAMLC_OPTS=$(OCAMLDEP_OPTS) -w A
 OCAMLOPT_OPTS=$(OCAMLC_OPTS)
 
